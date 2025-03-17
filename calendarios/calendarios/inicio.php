@@ -3,7 +3,11 @@
 <?php
 session_start(); 
 include("conexion.php");
-$rut = "0102388801";
+$rut = "016784781K";
+
+//idcurso
+//8858
+//8924
 
 $spre_personas = "SELECT * FROM spre_personas WHERE Rut ='$rut' ";
 $spre_personasQ = mysqli_query($conexion3,$spre_personas);
@@ -249,7 +253,7 @@ $foto_docente = InfoDocenteUcampus($rut);
 												WHERE spre_profesorescurso.idTipoParticipacion IN ('1','2','3','8','10') 
 												AND rut='$rut' 
 												AND spre_profesorescurso.Vigencia='1' 
-												AND (spre_periodo_calendario.activo= 1 OR spre_periodo_calendario.anterior IN (1))
+												AND (spre_periodo_calendario.activo= 2 OR spre_periodo_calendario.anterior IN (1))
 												GROUP BY idcurso  
 												ORDER BY NombreCurso ASC";
 									  $cursosQuery = mysqli_query($conexion3,$cursos);
@@ -266,7 +270,7 @@ $foto_docente = InfoDocenteUcampus($rut);
 											<td><span class="badge bg-secondary text-white"><i class="bi bi-star me-1"></i> <?php echo $fila_cursos["CargoTexto"]; ?> </span></td>
 											<td><?php echo $fila_cursos["Semanas"]; ?></td>
 											<td>
-												<a type="button" class="btn btn-outline-primary btn-sm" target="" href="index.php?curso=<?php echo $fila_cursos["idcurso"]; ?>"><i class="ri ri-calendar-check-fill"></i> Calendario</a>
+												<a type="button" class="btn btn-outline-primary btn-sm" target="" href="<?php echo ($fila_cursos["VersionCalendario"] == 1) ? 'index_clinico.php' : 'index.php'; ?>?curso=<?php echo $fila_cursos["idcurso"]; ?>"><i class="ri ri-calendar-check-fill"></i> Calendario</a>
 												
 												<?php if($fila_cursos["activo"] == 1){ 
 

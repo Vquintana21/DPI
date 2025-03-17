@@ -43,7 +43,7 @@ $ramo_fila = mysqli_fetch_assoc($ramoQuery);
 
 $nombre_curso = utf8_encode($ramo_fila["NombreCurso"]);
 
-//Consulta Ramo
+//Consulta Funcionario
 $spre_personas = "SELECT * FROM spre_personas WHERE Rut='$rut' ";
 $spre_personasQ = mysqli_query($conexion3,$spre_personas);
 $fila_personas = mysqli_fetch_assoc($spre_personasQ);
@@ -391,36 +391,39 @@ $conn->close();
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form id="autoaprendizajeForm">
-                    <input type="hidden" id="auto-idplanclases" name="idplanclases">
-                    <div class="mb-3">
-                        <label class="form-label">Título de la actividad</label>
-                        <textarea class="form-control" id="auto-activity-title" name="activity-title" rows="3"></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Tiempo asignado</label>
-                        <div class="row">
-                            <div class="col-6">
-                                <div class="input-group">
-                                    <input type="number" class="form-control" id="auto-hours" name="hours" min="0" max="23" placeholder="Horas">
-                                    <span class="input-group-text">hrs</span>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="input-group">
-                                    <input type="number" class="form-control" id="auto-minutes" name="minutes" min="0" max="59" placeholder="Minutos">
-                                    <span class="input-group-text">min</span>
-                                </div>
-                            </div>
-                        </div>
-                        <small class="text-muted">Tiempo máximo semanal: <span id="max-hours"><?php echo $horasData['tiempo']; ?></span></small>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-                <button type="button" class="btn btn-success" onclick="saveAutoActivity()">Guardar</button>
-            </div>
+				<form id="autoaprendizajeForm">
+					<input type="hidden" id="auto-idplanclases" name="idplanclases">
+					<div class="mb-3">
+						<label class="form-label">Título de la actividad</label>
+						<textarea class="form-control" id="auto-activity-title" name="activity-title" rows="3"></textarea>
+					</div>
+					<div class="mb-3" id="auto-time-fields">
+						<label class="form-label">Tiempo asignado</label>
+						<div class="row">
+							<div class="col-6">
+								<div class="input-group">
+									<input type="number" class="form-control" id="auto-hours" name="hours" min="0" max="23" placeholder="Horas">
+									<span class="input-group-text">hrs</span>
+								</div>
+							</div>
+							<div class="col-6">
+								<div class="input-group">
+									<input type="number" class="form-control" id="auto-minutes" name="minutes" min="0" max="59" placeholder="Minutos">
+									<span class="input-group-text">min</span>
+								</div>
+							</div>
+						</div>
+						<small class="text-muted">Tiempo máximo semanal: <span id="max-hours"><?php echo $horasData['tiempo']; ?></span></small>
+					</div>
+					<div class="alert alert-warning" id="auto-no-hours-message" style="display: none;">
+						Este curso no posee horas NO presenciales asignadas.
+					</div>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+				<button type="button" class="btn btn-success" id="save-auto-btn" onclick="saveAutoActivity()">Guardar</button>
+			</div>
         </div>
     </div>
 </div>
@@ -587,9 +590,31 @@ function updateSubTypes() {
 }
 
 function loadAutoActivityData(activity) {
-    document.getElementById('auto-idplanclases').value = activity.idplanclases;
-    document.getElementById('auto-activity-title').value = activity.pcl_tituloActividad || '';
-    document.getElementById('auto-week').textContent = activity.pcl_Semana;
+   document.getElementById('auto-idplanclases').value = activity.idplanclases;
+   document.getElementById('auto-activity-title').value = activity.pcl_tituloActividad || '';
+   document.getElementById('auto-week').textContent = activity.pcl_Semana;
+   
+   // Verificar si hay horas no presenciales disponibles
+   if (horasSemanales <= 0) {
+       // Ocultar campos de tiempo y mostrar mensaje
+       document.getElementById('auto-time-fields').style.display = 'none';
+       document.getElementById('auto-no-hours-message').style.display = 'block';
+       document.getElementById('save-auto-btn').disabled = true;
+   } else {
+       // Mostrar campos de tiempo y ocultar mensaje
+       document.getElementById('auto-time-fields').style.display = 'block';
+       document.getElementById('auto-no-hours-message').style.display = 'none';
+       document.getElementById('save-auto-btn').disabled = false;
+       
+       // Si ya tiene horas asignadas, mostrarlas en el formulario
+       if (activity.pcl_HorasNoPresenciales) {
+           const horasMatch = activity.pcl_HorasNoPresenciales.match(/(\d+):(\d+):(\d+)/);
+           if (horasMatch) {
+               document.getElementById('auto-hours').value = parseInt(horasMatch[1]);
+               document.getElementById('auto-minutes').value = parseInt(horasMatch[2]);
+           }
+       }
+   }
 }
 	
 	 // Modificar la función loadActivityData existente
@@ -972,177 +997,181 @@ function getWeekDates(activity) {
     };
 }
 
-function generateCalendar(activitiesForMonth, calendarBody) {
+function generateCalendar(activitiesForMonth, calendarBody, currentMonth) {
     const weeklyActivities = new Map();
     
     // Primero ordenamos las actividades por fecha
     activitiesForMonth.sort((a, b) => new Date(a.pcl_Fecha) - new Date(b.pcl_Fecha));
     
+    // Agrupar por semana
     activitiesForMonth.forEach(activity => {
         const weekNumber = parseInt(activity.pcl_Semana);
+        if (weekNumber === 0) return;
+        
         const activityDate = new Date(activity.pcl_Fecha);
-        
-        // Si es una actividad de autoaprendizaje, necesitamos determinar a qué mes pertenece
-        if (activity.pcl_TipoSesion === 'Autoaprendizaje') {
-            // Buscar otras actividades de la misma semana
-            const semanaActividades = activitiesForMonth.filter(a => 
-                a.pcl_Semana === activity.pcl_Semana && 
-                a.pcl_TipoSesion !== 'Autoaprendizaje'
-            );
-            
-            if (semanaActividades.length > 0) {
-                // Usar la fecha de la primera actividad regular de la semana
-                const fechaReferencia = new Date(semanaActividades[0].pcl_Fecha);
-                // Actualizar la fecha de la actividad de autoaprendizaje
-                activityDate.setFullYear(fechaReferencia.getFullYear());
-                activityDate.setMonth(fechaReferencia.getMonth());
-                activityDate.setDate(fechaReferencia.getDate());
-            }
-        }
-        
-        // Crear una clave única que incluya el mes específico para las semanas de transición
-        const isTransitionWeek = activityDate.getDate() <= 7 && weekNumber === parseInt(activity.pcl_Semana);
-        const monthKey = `${activityDate.getFullYear()}-${activityDate.getMonth()}`;
-        const weekKey = `${monthKey}-${weekNumber}`;
+        const weekKey = `week-${weekNumber}`;
         
         if (!weeklyActivities.has(weekKey)) {
             weeklyActivities.set(weekKey, {
                 weekNum: weekNumber,
-                monthKey: monthKey,
                 activities: [],
                 startDate: activityDate
             });
         }
         
-        // Solo agregar la actividad si pertenece al mes actual
-        const currentMonth = activitiesForMonth[0] ? new Date(activitiesForMonth[0].pcl_Fecha).getMonth() : null;
-        if (activityDate.getMonth() === currentMonth || 
-            (activity.pcl_TipoSesion === 'Autoaprendizaje' && isTransitionWeek)) {
-            weeklyActivities.get(weekKey).activities.push(activity);
-        }
+        weeklyActivities.get(weekKey).activities.push(activity);
     });
 
     // Convertir el Map a Array y ordenar por semana
     const sortedWeeks = Array.from(weeklyActivities.values())
-        .filter(week => week.activities.length > 0) // Solo mostrar semanas con actividades
+        .filter(week => week.activities.length > 0)
         .sort((a, b) => a.weekNum - b.weekNum);
 
-        if (sortedWeeks.length === 0) {
-            const emptyRow = document.createElement('tr');
-            emptyRow.innerHTML = `
-                <td colspan="7" class="text-center py-4">
-                    No hay actividades programadas para este mes
-                </td>
-            `;
-            calendarBody.appendChild(emptyRow);
-            return;
-        }
+    if (sortedWeeks.length === 0) {
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = `
+            <td colspan="7" class="text-center py-4">
+                No hay actividades programadas para este mes
+            </td>
+        `;
+        calendarBody.appendChild(emptyRow);
+        return;
+    }
 
-        sortedWeeks.forEach(week => {
-            if (week.weekNum === 0) return;
-
-            const weekRow = document.createElement('tr');
+    sortedWeeks.forEach(week => {
+        const weekRow = document.createElement('tr');
+        
+        // Celda de semana
+        const weekCell = document.createElement('td');
+        weekCell.className = 'week-number';
+        const weekDates = getWeekDates(week.activities[0]);
+        weekCell.innerHTML = `Semana ${week.weekNum}<br>(${weekDates.inicio} - ${weekDates.fin})`;
+        weekRow.appendChild(weekCell);
+        
+        // Celdas de días
+        ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'].forEach(day => {
+            const dayCell = document.createElement('td');
+            dayCell.className = 'calendar-cell';
             
-            const weekCell = document.createElement('td');
-			weekCell.className = 'week-number';
-			const weekDates = getWeekDates(week.activities[0]);
-			weekCell.innerHTML  = `Semana ${week.weekNum}<br>(${weekDates.inicio} - ${weekDates.fin})`;
-			weekRow.appendChild(weekCell);
-
-            ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'].forEach(day => {
-                const dayCell = document.createElement('td');
-                dayCell.className = 'calendar-cell';
-
-                const dayActivities = week.activities
-                    .filter(activity => activity.dia === day)
-                    .sort((a, b) => a.pcl_Inicio.localeCompare(b.pcl_Inicio));
-                
-                dayActivities.forEach(activity => {
-                    const button = createActivityButton(activity);
-                    dayCell.appendChild(button);
-                });
-
-                weekRow.appendChild(dayCell);
-            });
-
-            const autoCell = document.createElement('td');
-            autoCell.className = 'calendar-cell autoaprendizaje';
-            const autoActivities = week.activities
-                .filter(activity => activity.pcl_TipoSesion === 'Autoaprendizaje');
-            autoActivities.forEach(activity => {
+            // Actividades para este día que pertenecen a este mes
+            const dayActivities = week.activities
+                .filter(activity => {
+                    if (activity.dia !== day) return false;
+                    
+                    const activityDate = new Date(activity.pcl_Fecha);
+                    return activityDate.getMonth() === currentMonth;
+                })
+                .sort((a, b) => a.pcl_Inicio.localeCompare(b.pcl_Inicio));
+            
+            dayActivities.forEach(activity => {
                 const button = createActivityButton(activity);
-                autoCell.appendChild(button);
+                dayCell.appendChild(button);
             });
-            weekRow.appendChild(autoCell);
-
-            calendarBody.appendChild(weekRow);
-        });
-    }
-
-    function generateFullCalendar() {
-        const months = getMonthRange();
-        const container = document.getElementById('calendar-container');
-        container.innerHTML = '';
-
-        months.forEach(date => {
-            const monthSection = document.createElement('div');
-            monthSection.className = 'month-section mb-4';
-
-            const monthHeader = document.createElement('h3');
-            monthHeader.className = 'mb-3';
-            monthHeader.textContent = date.toLocaleString('es-ES', { 
-                month: 'long', 
-                year: 'numeric' 
-            }).charAt(0).toUpperCase() + date.toLocaleString('es-ES', { 
-                month: 'long', 
-                year: 'numeric' 
-            }).slice(1);
-            monthSection.appendChild(monthHeader);
-
-            const monthActivities = planClases.filter(activity => {
-    const activityDate = new Date(activity.pcl_Fecha);
-    // Si es una actividad de autoaprendizaje, buscar otras actividades de la misma semana
-    if (activity.pcl_TipoSesion === 'Autoaprendizaje') {
-        const semanaActividades = planClases.filter(a => 
-            a.pcl_Semana === activity.pcl_Semana && 
-            a.pcl_TipoSesion !== 'Autoaprendizaje'
-        );
-        if (semanaActividades.length > 0) {
-            // Usar la fecha de la primera actividad de la semana
-            const firstActivity = new Date(semanaActividades[0].pcl_Fecha);
-            return firstActivity.getMonth() === date.getMonth() && 
-                   firstActivity.getFullYear() === date.getFullYear();
-        }
-    }
-    return activityDate.getMonth() === date.getMonth() && 
-           activityDate.getFullYear() === date.getFullYear();
-});
-
-            const table = document.createElement('div');
-            table.className = 'table-responsive';
-            table.innerHTML = `
-                <table class="table table-bordered">
-                    <thead class="calendar-header">
-                        <tr>
-                            <th style="width: 8%">Semana</th>
-                            <th>Lunes</th>
-                            <th>Martes</th>
-                            <th>Miércoles</th>
-                            <th>Jueves</th>
-                            <th>Viernes</th>
-                            <th style="width: 15%">Autoaprendizaje</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    </tbody>
-                </table>
-            `;
             
-            generateCalendar(monthActivities, table.querySelector('tbody'));
-            monthSection.appendChild(table);
-            container.appendChild(monthSection);
+            weekRow.appendChild(dayCell);
         });
-    }
+        
+        // Celda de autoaprendizaje
+        const autoCell = document.createElement('td');
+        autoCell.className = 'calendar-cell autoaprendizaje';
+        
+        // Solo mostrar autoaprendizaje
+        const autoActivity = week.activities.find(activity => 
+            activity.pcl_TipoSesion === 'Autoaprendizaje'
+        );
+        
+        if (autoActivity) {
+            const button = createActivityButton(autoActivity);
+            autoCell.appendChild(button);
+        }
+        
+        weekRow.appendChild(autoCell);
+        calendarBody.appendChild(weekRow);
+    });
+}
+
+
+function generateFullCalendar() {
+    const months = getMonthRange();
+    const container = document.getElementById('calendar-container');
+    container.innerHTML = '';
+
+    months.forEach(date => {
+        const monthSection = document.createElement('div');
+        monthSection.className = 'month-section mb-4';
+
+        const monthHeader = document.createElement('h3');
+        monthHeader.className = 'mb-3';
+        monthHeader.textContent = date.toLocaleString('es-ES', { 
+            month: 'long', 
+            year: 'numeric' 
+        }).charAt(0).toUpperCase() + date.toLocaleString('es-ES', { 
+            month: 'long', 
+            year: 'numeric' 
+        }).slice(1);
+        monthSection.appendChild(monthHeader);
+
+        // Filtrar actividades para este mes
+        const monthActivities = planClases.filter(activity => {
+            const activityDate = new Date(activity.pcl_Fecha);
+            
+            // Para actividades regulares, solo mostrar si pertenecen a este mes
+            if (activity.pcl_TipoSesion !== 'Autoaprendizaje') {
+                return activityDate.getMonth() === date.getMonth() && 
+                       activityDate.getFullYear() === date.getFullYear();
+            }
+            
+            // Para actividades de autoaprendizaje
+            if (activity.pcl_TipoSesion === 'Autoaprendizaje') {
+                const weekNumber = parseInt(activity.pcl_Semana);
+                
+                // Encontrar todas las actividades regulares de esta semana
+                const regularActivities = planClases.filter(a => 
+                    parseInt(a.pcl_Semana) === weekNumber && 
+                    a.pcl_TipoSesion !== 'Autoaprendizaje'
+                );
+                
+                if (regularActivities.length === 0) return false;
+                
+                // Obtener el último día de la semana
+                const lastDayOfWeek = regularActivities
+                    .map(a => new Date(a.pcl_Fecha))
+                    .sort((a, b) => b - a)[0];
+                
+                // El autoaprendizaje solo aparece en el mes que contiene el último día de la semana
+                return lastDayOfWeek.getMonth() === date.getMonth() && 
+                       lastDayOfWeek.getFullYear() === date.getFullYear();
+            }
+            
+            return false;
+        });
+
+        const table = document.createElement('div');
+        table.className = 'table-responsive';
+        table.innerHTML = `
+            <table class="table table-bordered">
+                <thead class="calendar-header">
+                    <tr>
+                        <th style="width: 8%">Semana</th>
+                        <th>Lunes</th>
+                        <th>Martes</th>
+                        <th>Miércoles</th>
+                        <th>Jueves</th>
+                        <th>Viernes</th>
+                        <th style="width: 15%">Autoaprendizaje</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        `;
+        
+        generateCalendar(monthActivities, table.querySelector('tbody'), date.getMonth());
+        monthSection.appendChild(table);
+        container.appendChild(monthSection);
+    });
+}
+
 
     document.addEventListener('DOMContentLoaded', () => {
         generateFullCalendar();
@@ -1662,7 +1691,56 @@ function mostrarToastSalas(mensaje, tipo = 'success') {
     toastElement.show();
 }
 
-
+function saveAutoActivity() {
+    const form = document.getElementById('autoaprendizajeForm');
+    const formData = new FormData();
+    
+    // Obtener los datos del formulario
+    const idplanclases = document.getElementById('auto-idplanclases').value;
+    const activityTitle = document.getElementById('auto-activity-title').value;
+    const hours = parseInt(document.getElementById('auto-hours').value) || 0;
+    const minutes = parseInt(document.getElementById('auto-minutes').value) || 0;
+    
+    // Validar horas y minutos
+    if (!validateAutoTime(hours, minutes)) {
+        mostrarToast(`Las horas asignadas exceden el máximo semanal (${horasSemanales} horas)`, 'danger');
+        return;
+    }
+    
+    // Formatear las horas en formato HH:MM:SS
+    const horasNoPresenciales = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+    
+    // Añadir datos al formData
+    formData.append('idplanclases', idplanclases);
+    formData.append('activity-title', activityTitle);
+    formData.append('horasNoPresenciales', horasNoPresenciales);
+    
+    // Enviar datos al servidor
+    fetch('guardar_autoaprendizaje.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Cerrar modal
+            const modalElement = document.getElementById('autoaprendizajeModal');
+            const modal = bootstrap.Modal.getInstance(modalElement);
+            if (modal) modal.hide();
+            
+            // Mostrar notificación de éxito
+            mostrarToast('Autoaprendizaje guardado correctamente', 'success');
+            
+            // Recargar la página después de un breve periodo
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            throw new Error(data.message || 'Error al guardar el autoaprendizaje');
+        }
+    })
+    .catch(error => {
+        mostrarToast('Error: ' + error.message, 'danger');
+    });
+}
 
 </script>
 
